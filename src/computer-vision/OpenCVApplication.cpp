@@ -847,20 +847,228 @@ void median_filter(int kernel_dim)
 }
 
 
+Mat apply_convolution_float(Mat *src, Mat *p) {
+	Mat dst = Mat(src->rows, src->cols, CV_32FC1);
+	for (int i = 1; i < src->rows - 1; i++) {
+		for (int j = 1; j < src->cols - 1; j++) {
+			float val = 0;
+			for (int ki = -1; ki <= 1; ki++) {
+				for (int m = -1; m <= 1; m++) {
+					val += (src->at<uchar>(i + ki, j + m) * p->at<float>(ki + 1, m + 1));
+				}
+			}
+			dst.at<float>(i, j) = val;
+		}
+	}
+	return dst;
+}
+
+
+void canny_gradient()
+{
+	char fname[MAX_PATH];
+
+	while (openFileDlg(fname))
+	{
+
+		Mat src = imread(fname, CV_LOAD_IMAGE_GRAYSCALE);
+
+		Mat Gx, Gy;
+
+		//Sobel
+		Mat Sx = (Mat_<float>(3, 3) << -1, 0, 1, -2, 0, 2, -1, 0, 1);
+		Mat Sy = (Mat_<float>(3, 3) << 1, 2, 1, 0, 0, 0, -1, -2, -1);
+
+
+		Gx = apply_convolution_float(&src, &Sx);
+		Gy = apply_convolution_float(&src, &Sy);
+
+
+		Mat G = Mat(src.rows, src.cols, CV_32FC1);
+		Mat alfa = Mat(src.rows, src.cols, CV_32FC1);
+
+		Mat Gx_show;
+		Mat Gy_show;
+		
+
+		for (int i = 0; i < src.rows; i++)
+			for (int j = 0; j < src.cols; j++) {
+				G.at<float>(i, j) = sqrt(pow(Gx.at<float>(i, j), 2) + pow(Gy.at<float>(i, j), 2));
+				alfa.at<float>(i, j) = atan2(Gy.at<float>(i, j), Gx.at<float>(i, j));
+				
+				if (alfa.at<float>(i, j) < 0)
+					alfa.at<float>(i, j) += 2 * PI;
+
+
+			}
+
+		Gx.convertTo(Gx_show, CV_8UC1);
+		Gy.convertTo(Gy_show, CV_8UC1);
+		imshow("gx", Gx_show);
+		imshow("gy", Gy_show);
+
+		Mat G_show;
+		G.convertTo(G_show, CV_8UC1);
+		imshow("gradient matrix ", G_show);
+		imshow("src", src);
+
+	
+
+		Mat newG = G.clone();
+
+		for (int i = 1; i < newG.rows-1; i++)
+			for (int j = 1; j < newG.cols - 1; j++)
+			{
+				float angle = alfa.at<float>(i, j);
+				int beta = (int)round(alfa.at<float>(i, j) * 8 / (2 * PI)) % 8;
+				float pixel = abs(newG.at<float>(i, j));
+
+				switch (beta % 4 )
+				{
+				case 0:
+					if (pixel >= abs((newG.at<float>(i, j - 1)) && pixel >= abs((newG.at<float>(i, j + 1)))))
+						newG.at<float>(i, j) = pixel;
+					else
+						newG.at<float>(i, j) = 0;
+					break;
+				case 1:
+					if (pixel >= abs((newG.at<float>(i - 1, j + 1)) && pixel >= abs((newG.at<float>(i + 1, j - 1)))))
+						newG.at<float>(i, j) = pixel;
+					else
+						newG.at<float>(i, j) = 0;
+					break;
+				case 2:
+					if (pixel >= abs(newG.at<float>(i + 1, j)) && pixel >= abs(newG.at<float>(i - 1, j)))
+						newG.at<float>(i, j) = pixel;
+					else
+						newG.at<float>(i, j) = 0;
+					break;
+				case 3:
+					if (pixel >= abs(newG.at<float>(i - 1, j - 1)) && pixel >= abs(newG.at<float>(i + 1, j + 1)))
+						newG.at<float>(i, j) = pixel;
+					else
+						newG.at<float>(i, j) = 0;
+					break;
+				}
+			}
+
+		Mat newG_show;
+
+		newG.convertTo(newG_show, CV_8UC1);
+
+		imshow("subtiata", newG_show);
+
+		int v[256];
+
+		for (int k = 0; k < 256; k++)
+			v[k] = 0;
+
+		for (int i = 1; i < src.rows - 1; i++) {
+			for (int j = 1; j < src.cols - 1; j++) {
+				v[newG_show.at<uchar>(i, j)] ++;
+			}
+		}
+
+		//showHistogram("histogram", v, 256, 256);
+
+
+		int noEdgePixels;
+		int noNonZeroGradientPixels;
+		float procent = 0.1f;
+
+		noNonZeroGradientPixels = (newG_show.rows - 2) * (newG_show.cols - 2) - v[0];
+		noEdgePixels = procent * noNonZeroGradientPixels;
+
+		int ok = 0;
+		int computed_sum = 0;
+		int treshold_high;
+		for (int i = 255; i >= 0 && ok == 0; i--) {
+			if (computed_sum < noEdgePixels)
+				computed_sum += v[i];
+			else {
+				ok = 1;
+				treshold_high = i;
+			}
+		}
+
+		int treshold_low;
+		float k_procent = 0.4f;
+		treshold_low = k_procent * treshold_high;
+
+		printf("treshold high %d", treshold_high);
+
+
+		for (int i = 1; i < newG_show.rows - 1; i++) {
+			for (int j = 1; j < newG_show.cols - 1; j++)
+			{
+				if (newG_show.at<uchar>(i, j) >= treshold_high) {
+					newG_show.at<uchar>(i, j) = 255;
+				}
+				else if (newG_show.at<uchar>(i, j) < treshold_high && newG_show.at<uchar>(i, j) > treshold_low) {
+					newG_show.at<uchar>(i, j) = 128;
+				}
+				else if (newG_show.at<uchar>(i, j) = 255 <= treshold_low) {
+					newG_show.at<uchar>(i, j) = 0;
+				}
+			}
+		}
+
+		int i_index[8] = { -1, 0, 1, 0, -1, -1, 1, 1 };
+		int j_index[8] = { 0, -1, 0, 1, -1, 1, -1, 1 };
+		uchar neighbor[8];
+
+
+		//bfs
+		for (int i = 1; i < newG_show.rows - 1; i++) {
+			for (int j = 1; j < newG_show.cols - 1; j++) {
+				if (newG_show.at<uchar>(i, j) == 255) {
+					std::queue<Point2i> Q;
+					Q.push(Point2i(i, j));
+					while (!Q.empty())
+					{
+						Point2i q = Q.front();
+						Q.pop();
+
+						// check neighbours
+						for (int k = 0; k < 8; k++)
+							neighbor[k] = newG_show.at<uchar>(q.x + i_index[k], q.y + j_index[k]);
+
+						for (int k = 0; k < 8; k++) {
+							if (neighbor[k] == 128)
+							{
+								newG_show.at<uchar>(q.x + i_index[k], q.y + j_index[k]) = 255;
+								Q.push(Point2i(q.x + i_index[k], q.y + j_index[k]));
+
+							}
+						}
+					}
+				}
+
+			}
+		}
+
+		// change weak points non-edge points
+		for (int i = 1; i < newG_show.rows - 1; i++) {
+			for (int j = 1; j < newG_show.cols - 1; j++) {
+				if (newG_show.at<uchar>(i, j) == 128) {
+					newG_show.at<uchar>(i, j) = 0;
+				}
+			}
+		}
+
+		imshow("final Canny", newG_show);
+		waitKey();
+
+	}
+}
+	
+	
+
+
 int main()
 {
 	
-	printf("For 1D Gaussian filter : \n > \n"); 
-	 gaussian_filter_1x2();
-	 printf("For 2D Gaussian filter : The process is much faster :  \n > \n");
-	 gaussian_filter_2x1();
-	 printf("Median filter : \n > \n");
-	 
-	 int k; 
-	 printf("Give kernel dimension (3, 5, 7 ) : \n > \n ");
-	 scanf("%d", &k); 
-	 
-	 median_filter(k);
+	canny_gradient();
 
 	
 	return 0;
