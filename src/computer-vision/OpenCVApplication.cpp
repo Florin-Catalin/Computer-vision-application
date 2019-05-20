@@ -150,7 +150,6 @@ void standardDeviation() {
 	histogram(img);
 }
 
-
 //global threshold  algorithm
 void globalBinarization()
 {
@@ -359,8 +358,6 @@ void histogramEqualizer()
 }
 
 
-
-
 void filtruLaplace()
 {
 	char fname[MAX_PATH];
@@ -397,9 +394,6 @@ void filtruLaplace()
 		waitKey();
 	}
 }
-
-
-
 
 void generalConvolution(int w  )
 {
@@ -459,7 +453,6 @@ void generalConvolution(int w  )
 
 
 }
-
 
 void filtruGauss()
 {
@@ -521,8 +514,6 @@ void filtruMedian()
 		waitKey();
 	}
 }
-
-
 
 void centering_transform(Mat img) {
 	//expects floating point image
@@ -1065,11 +1056,41 @@ void canny_gradient()
 	
 
 
+//eroziune 
+
+bool isInside(int i, int j, int rows, int cols) {
+	return(i >= 0 && i < rows && j >= 0 && j < cols);
+}
+Mat eroziune(Mat src)
+{
+	Mat dst = src.clone();
+
+	int di[8] = { 0, -1, -1, -1, 0, 1, 1, 1 };
+	int dj[8] = { 1, 1, 0, -1, -1, -1, 0, 1 };
+
+	for (int i = 1; i < src.rows - 1; i++)
+		for (int j = 1; j < src.cols - 1; j++)
+			if (src.at<uchar>(i, j) == 0) {
+				for (int k = 0; k < 8; k++)
+					if (src.at<uchar>(i + di[k], j + dj[k]) == 255)
+						dst.at<uchar>(i, j) = 255;
+			}
+		
+
+
+	return dst;
+}
+
 int main()
 {
-	
-	canny_gradient();
-
+	char fname[MAX_PATH];
+	if (openFileDlg(fname))
+	{
+		Mat img = imread(fname, CV_LOAD_IMAGE_GRAYSCALE);
+		imshow("a", img);
+		imshow("b",eroziune(eroziune( eroziune(eroziune(img)))));
+		waitKey(0);
+	}
 	
 	return 0;
 }
